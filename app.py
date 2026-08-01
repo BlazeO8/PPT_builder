@@ -71,19 +71,17 @@ else:
         response = client.search(query)
         return response
 
-    def generate_image(img_prompt, slide_no=1):
-        """This function helps user to generate
-        image using free api, with given
-        img_prompt, with slide no"""
-        url = f"https://image.pollinations.ai/{img_prompt}"
-        content = r.get(url).content
-        with open(f"ai_image_{slide_no}.jpeg", "wb") as f:
-            f.write(content)
+    def generate_image(img_prompt: str) -> str:
+        """Generates an image for the given prompt and returns a direct,
+        publicly-accessible image URL. Use this URL directly as the src
+        of an <img> tag in the generated HTML — do NOT reference a local
+        file path, since the browser cannot access files on the server."""
+        url = f"https://image.pollinations.ai/prompt/{img_prompt}"
         return url
 
-    leader_agent = create_agent(model=model, tools=[search_latest_info])
+    leader_agent = create_agent(model=model, tools=[search_latest_info, generate_image])
     if fallback_model is not None:
-        fallback_agent = create_agent(model=fallback_model, tools=[search_latest_info])
+        fallback_agent = create_agent(model=fallback_model, tools=[search_latest_info, generate_image])
 
     def invoke_with_fallback(prompt_content):
         """Try the primary agent first; if it errors (auth, quota, deprecated
@@ -112,14 +110,17 @@ else:
     def run_agent(query):
         prompt = """Based on Below given Query,
         your task is to call specific tool, first to
-        promptify user prompt, than call image tool, or
-        latest search if required. give slide dynamic, ui ux,
-        with creative design, keep help of function to generate image
-        based on given topic,
-        Generate image using
-        with number of slide asked, and use time sleep to hit image request on server
-        and using file handling embed this in output html, use java script function
-        give Final response output in HTML, no markdowns
+        promptify user prompt, then call the generate_image tool for each
+        slide that needs a visual, or the search_latest_info tool if
+        latest information is required. Give slide dynamic, ui ux,
+        with creative design.
+
+        IMPORTANT: For every image, you MUST call the generate_image tool
+        and use the exact URL it returns as the src attribute of an <img>
+        tag (e.g. <img src="THE_RETURNED_URL">). Do NOT reference a local
+        file path or filename for images — only the URL returned by the tool.
+
+        Give Final response output in HTML, no markdowns
         user query given below:""" + query
 
         response = invoke_with_fallback(prompt)
