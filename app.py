@@ -1,5 +1,6 @@
 #========STEP 1=========
 import time
+from urllib.parse import quote
 from langchain.agents import create_agent
 from langchain_groq import ChatGroq
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -76,7 +77,8 @@ else:
         publicly-accessible image URL. Use this URL directly as the src
         of an <img> tag in the generated HTML — do NOT reference a local
         file path, since the browser cannot access files on the server."""
-        url = f"https://image.pollinations.ai/prompt/{img_prompt}"
+        encoded_prompt = quote(img_prompt)
+        url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=576&nologo=true"
         return url
 
     leader_agent = create_agent(model=model, tools=[search_latest_info, generate_image])
@@ -108,19 +110,28 @@ else:
         return str(content)
 
     def run_agent(query):
-        prompt = """Based on Below given Query,
-        your task is to call specific tool, first to
-        promptify user prompt, then call the generate_image tool for each
-        slide that needs a visual, or the search_latest_info tool if
-        latest information is required. Give slide dynamic, ui ux,
-        with creative design.
+        prompt = """Based on the query below, build a visually designed slide
+        deck as a single HTML file. Use the generate_image tool for any slide
+        that needs a visual, and use search_latest_info if current or factual
+        information is required.
 
-        IMPORTANT: For every image, you MUST call the generate_image tool
-        and use the exact URL it returns as the src attribute of an <img>
-        tag (e.g. <img src="THE_RETURNED_URL">). Do NOT reference a local
-        file path or filename for images — only the URL returned by the tool.
+        Design requirements (do not skip these):
+        - Include a <style> block with real CSS, not just plain tags.
+        - Give the page a background (gradient or solid color), not white/blank.
+        - Each slide is its own styled <div class="slide"> card with padding,
+          border-radius, box-shadow, and spacing between slides — not just a
+          bare heading and paragraph in a row.
+        - Pick a consistent heading font and body font (Google Fonts link or
+          web-safe fallback) and consistent text colors that contrast with the
+          background.
+        - For every image, call the generate_image tool and use the exact
+          returned URL as the src of an <img> tag (e.g. <img src="THE_RETURNED_URL">).
+          Style the <img> with a fixed width, border-radius, and object-fit: cover.
+          Do NOT reference a local file path or filename for images.
 
-        Give Final response output in HTML, no markdowns
+        Output ONLY the final HTML (including the <style> block), no markdown,
+        no explanation before or after it.
+
         user query given below:""" + query
 
         response = invoke_with_fallback(prompt)
