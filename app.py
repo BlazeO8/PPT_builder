@@ -104,7 +104,7 @@ def run_agent(leader_agent, query):
     return code
 
 # leader_agent creation
-if all(all_API)    
+if all(all_API):
   leader_agent = create_agent(
       model=model,
       tools=[
