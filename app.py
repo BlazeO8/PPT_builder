@@ -96,6 +96,19 @@ else:
                 return fallback_agent.invoke({'messages': [{'role': 'user', 'content': prompt_content}]})
             raise
 
+    def extract_text(response):
+        """Gemini returns content as a list of blocks (content[-1]['text']),
+        but Groq returns content as a plain string. Handle both safely."""
+        content = response['messages'][-1].content
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list) and content:
+            last = content[-1]
+            if isinstance(last, dict):
+                return last.get('text', str(last))
+            return str(last)
+        return str(content)
+
     def run_agent(query):
         prompt = """Based on Below given Query,
         your task is to call specific tool, first to
@@ -110,7 +123,7 @@ else:
         user query given below:""" + query
 
         response = invoke_with_fallback(prompt)
-        code = response["messages"][-1].content[-1]["text"]
+        code = extract_text(response)
         return code
 
     # ============ Step 4 STREAMLIT NAVBARS ============
@@ -142,7 +155,7 @@ else:
                         User Query: """ + user_input
 
                         response = invoke_with_fallback(prompt)
-                        code = response['messages'][-1].content[-1]['text']
+                        code = extract_text(response)
                         st.html(code, width="stretch", unsafe_allow_javascript=True)
                     except Exception as err:
                         st.error(f"Error Code: {err}")
@@ -164,4 +177,3 @@ else:
                         st.error(f"Error Code: {err}")
     else:
         st.info("Enter a prompt above to get started.")
-        
