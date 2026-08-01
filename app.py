@@ -110,7 +110,7 @@ if all(all_API):
       tools=[
           search_latest_info,
           # generate_image])
-
+      ]
   #leader_agent
 else:
     st.info("Give API-Keys first to load Agent")
