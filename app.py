@@ -1,176 +1,167 @@
 #========STEP 1=========
-import os
 import time
-import langchain
 from langchain.agents import create_agent
 from langchain_groq import ChatGroq
 from langchain_google_genai import ChatGoogleGenerativeAI
-import pytesseract as pyt
 from tavily import TavilyClient
-import numpy as np
+import requests as r
 import streamlit as st
 
-st.set_page_config(layout = "wide")
+st.set_page_config(layout="wide")
 
 #=================STEP 2 LOAD ENV and API KEYS==================
-st.title("Agentic  PPT Generator")
-st.header("""User can generate,PPT,Images,and fetch Latest news""")
+st.title("Agentic PPT Generator")
+st.header("""User can generate, PPT, Images, and fetch Latest news""")
 
 st.sidebar.title("Give API KEYS")
 
 GOOGLE_API_KEY = st.sidebar.text_input("GOOGLE_API_KEY", type="password")
+GROQ_API_KEY = st.sidebar.text_input("GROQ_API_KEY (optional fallback)", type="password")
 TAVILY_API_KEY = st.sidebar.text_input("TAVILY_API_KEY", type="password")
 
-ALL_API = [GOOGLE_API_KEY, TAVILY_API_KEY]
+leader_agent = None
+fallback_agent = None
 
-if not all(ALL_API):
-    st.sidebar.error("Must Pass All API-Keys")
+# Tavily is always required. At least one of Google/Groq is required.
+if not TAVILY_API_KEY:
+    st.sidebar.error("Tavily API key is required.")
+    st.markdown("Get Tavily API key: https://app.tavily.com/playground")
 
-    url = "https://aistudio.google.com/api-keys"
-    st.markdown(f"Get Google API key-{url}")
+elif not GOOGLE_API_KEY and not GROQ_API_KEY:
+    st.sidebar.error("Provide at least one of Google or Groq API key.")
+    st.markdown("Get Google API key: https://aistudio.google.com/apikey")
 
-    url = "https://app.tavily.com/playground"
-    st.markdown(f"Get Tavily API key-{url}")
-
-elif all(ALL_API):
+else:
     st.success("API KEYS LOADED")
 
-    options = [
-        "gemini-3.5-flash-lite",
-        "gemini-3.5-flash",
-        "gemini-2.5-flash-lite",
-        "gemini-2.5-flash"]
-
-    selected_model = st.selectbox("Select-Model", options=options)
-
-    model = ChatGoogleGenerativeAI(
-        model=selected_model,
-        google_api_key=GOOGLE_API_KEY)
-
-
-else:
-    st.sidebar.info("Try Valid API-keys")
-
-#==========================STEP 3=============================
-# Search latest info using Tavily
-def search_latest_info(query):
-    """This function helps to give
-    latest search using Tavily
-    based on given user query related research or
-    contents"""
-
-    client = TavilyClient(api_key=TAVILY_API_KEY)
-    response = client.search(query)
-    return response
-
-def generate_image(img_prompt, slide_no=1):
-    """This function helps user to generate
-    image using free api, with given
-    img_prompt, with slide no"""
-
-    url =  f"https://image.pollinations.ai/{img_prompt}"
-
-    import requests as r
-    content = r.get(url).content
-    with open(f"ai_image_{slide_no}.jpeg", "wb") as f:
-        f.write(content)
-    return url
-
-def run_agent(leader_agent, query):
-    prompt = f"""Based on Below given Query,
-    your task is to call specific tool, first to
-    promptify user prompt, than call image tool, or
-    latest search if required. give slide dynamic, ui ux,
-    with creative design, keep help of function to generate image
-    based on given topic,
-    Generate image using
-    with number of slide asked, and use time sleep to hit image request on server
-    and using file handling embed this in output html, use java script function
-    give Final response output in HTML, no markdowns
-    user query given below:"""
-
-    prompt = prompt + query
-
-    response = leader_agent.invoke({
-        "messages": [
-            {
-                "role": "user",
-                "content": prompt
-            }
+    model = None
+    if GOOGLE_API_KEY:
+        options = [
+            "gemini-2.0-flash",
+            "gemini-2.5-flash-lite",
+            "gemini-2.5-pro",
+            "gemini-3-flash-preview",
+            "gemini-3.1-flash-lite",
         ]
-    })
+        selected_model = st.selectbox("Select Gemini Model", options=options)
+        model = ChatGoogleGenerativeAI(
+            model=selected_model,
+            google_api_key=GOOGLE_API_KEY,
+        )
 
-    code = response["messages"][-1].content[-1]["text"]
-    return code
+    fallback_model = None
+    if GROQ_API_KEY:
+        fallback_model = ChatGroq(
+            model="llama-3.3-70b-versatile",
+            api_key=GROQ_API_KEY,
+        )
 
-# leader_agent creation
-if all(all_API):
-  leader_agent = create_agent(
-      model=model,
-      tools=[
-          search_latest_info,
-          # generate_image])
-      ]
-  #leader_agent
-else:
-    st.info("Give API-Keys first to load Agent")
+    # If only Groq was provided, use it as the primary model instead
+    if model is None:
+        model = fallback_model
+        fallback_model = None
 
-# ============ Step 4 STREAMLIT NAVBARS ============
+    #==========================STEP 3=============================
+    def search_latest_info(query):
+        """This function helps to give
+        latest search using Tavily
+        based on given user query related research or
+        contents"""
+        client = TavilyClient(api_key=TAVILY_API_KEY)
+        response = client.search(query)
+        return response
 
-tab1, tab2, tab3 = st.tabs([
-    "Generate Image",
-    "Fetch News",
-    "Generate PPT"
-])
+    def generate_image(img_prompt, slide_no=1):
+        """This function helps user to generate
+        image using free api, with given
+        img_prompt, with slide no"""
+        url = f"https://image.pollinations.ai/{img_prompt}"
+        content = r.get(url).content
+        with open(f"ai_image_{slide_no}.jpeg", "wb") as f:
+            f.write(content)
+        return url
 
-user_input = st.text_area("Write Prompt & click Enter")
+    leader_agent = create_agent(model=model, tools=[search_latest_info])
+    if fallback_model is not None:
+        fallback_agent = create_agent(model=fallback_model, tools=[search_latest_info])
 
-if (user_input):
-    with tab1:
-      if st.button("Click to Generate Image", key="Image-Button"):
-        with st.spinner("Running Agent"):
-          try:
-            url = generate_image(user_input)
-            import requests as r
-            img_data = r.get(url)
-            st.image(url)
-          except Exception as err:
-            st.error("Error Code: ", err)
+    def invoke_with_fallback(prompt_content):
+        """Try the primary agent first; if it errors (auth, quota, deprecated
+        model, etc.) retry with the fallback agent if one is configured."""
+        try:
+            return leader_agent.invoke({'messages': [{'role': 'user', 'content': prompt_content}]})
+        except Exception as primary_error:
+            if fallback_agent is not None:
+                st.warning(f"Primary model failed ({primary_error}). Retrying with fallback model...")
+                return fallback_agent.invoke({'messages': [{'role': 'user', 'content': prompt_content}]})
+            raise
 
-with tab2:
-  if st.button("Fetch Latest News", key="News-Button"):
-    with st.spinner("Running Agent"):
-      try:
-        prompt = """Give Latest News Related to Given user Query
-        in Dynamic HTML, Output with cards Design Format.
-        Strict HTML Output, No Any markdowns Response
-        User Query: """ + user_input
+    def run_agent(query):
+        prompt = """Based on Below given Query,
+        your task is to call specific tool, first to
+        promptify user prompt, than call image tool, or
+        latest search if required. give slide dynamic, ui ux,
+        with creative design, keep help of function to generate image
+        based on given topic,
+        Generate image using
+        with number of slide asked, and use time sleep to hit image request on server
+        and using file handling embed this in output html, use java script function
+        give Final response output in HTML, no markdowns
+        user query given below:""" + query
 
-        response = leader_agent.invoke({
-                    'messages': [{
-                        'role': 'user',
-                        'content': prompt
-                    }]
-                })
+        response = invoke_with_fallback(prompt)
+        code = response["messages"][-1].content[-1]["text"]
+        return code
 
-         code = response['messages'][-1].content[-1]['text']
-         st.html(code, width="stretch", unsafe_allow_javascript=True)
+    # ============ Step 4 STREAMLIT NAVBARS ============
+    tab1, tab2, tab3 = st.tabs([
+        "Generate Image",
+        "Fetch News",
+        "Generate PPT",
+    ])
 
-       except Exception as err:
-         st.error("Error Code: ", err)
+    user_input = st.text_area("Write Prompt & click Enter")
 
-with tab3:
-  if st.button("Click To Generate PPT", key="PPT-Button"):
-    with st.spinner("Running Agent"):
-      try:
-        code = run_agent(leader_agent, user_input)
-        st.html(code,width="stretch",unsafe_allow_javascript=True)
+    if user_input:
+        with tab1:
+            if st.button("Click to Generate Image", key="Image-Button"):
+                with st.spinner("Running Agent"):
+                    try:
+                        url = generate_image(user_input)
+                        st.image(url)
+                    except Exception as err:
+                        st.error(f"Error Code: {err}")
 
-        if st.download_button(
-                    label="DOWNLOAD PPT",
-                    data=code,
-                    file_name="ppt.html",
-                    mime="text/html"):
-           st.success("PPT Downloaded Successfully!!!")
-       except Exception as err:
-         st.error("Error Code: ", err)
+        with tab2:
+            if st.button("Fetch Latest News", key="News-Button"):
+                with st.spinner("Running Agent"):
+                    try:
+                        prompt = """Give Latest News Related to Given user Query
+                        in Dynamic HTML, Output with cards Design Format.
+                        Strict HTML Output, No Any markdowns Response
+                        User Query: """ + user_input
+
+                        response = invoke_with_fallback(prompt)
+                        code = response['messages'][-1].content[-1]['text']
+                        st.html(code, width="stretch", unsafe_allow_javascript=True)
+                    except Exception as err:
+                        st.error(f"Error Code: {err}")
+
+        with tab3:
+            if st.button("Click To Generate PPT", key="PPT-Button"):
+                with st.spinner("Running Agent"):
+                    try:
+                        code = run_agent(user_input)
+                        st.html(code, width="stretch", unsafe_allow_javascript=True)
+
+                        st.download_button(
+                            label="DOWNLOAD PPT",
+                            data=code,
+                            file_name="ppt.html",
+                            mime="text/html",
+                        )
+                    except Exception as err:
+                        st.error(f"Error Code: {err}")
+    else:
+        st.info("Enter a prompt above to get started.")
+        
