@@ -75,3 +75,35 @@ def generate_image(img_prompt, slide_no=1):
     with open(f"ai_image_{slide_no}.jpeg", "wb") as f:
         f.write(content)
     return url
+
+def run_agent(leader_agent, query):
+    prompt = f"""Based on Below given Query,
+    your task is to call specific tool, first to
+    promptify user prompt, than call image tool, or
+    latest search if required. give slide dynamic, ui ux,
+    with creative design, keep help of function to generate image
+    based on given topic,
+    Generate image using
+    with number of slide asked, and use time sleep to hit image request on server
+    and using file handling embed this in output html, use java script function
+    give Final response output in HTML, no markdowns
+    user query given below:"""
+
+    prompt
+        ]
+    })
+
+    code = response["messages"][-1].content[-1]["text"]
+    return code
+
+# leader_agent creation
+if all(all_API)    
+  leader_agent = create_agent(
+      model=model,
+      tools=[
+          search_latest_info,
+          # generate_image])
+
+  leader_agent
+else:
+    st.info("Give API-Keys first to load Agent")
