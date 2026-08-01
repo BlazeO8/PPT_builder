@@ -1,5 +1,6 @@
 #========STEP 1=========
 import time
+import base64
 from urllib.parse import quote
 from langchain.agents import create_agent
 from langchain_groq import ChatGroq
@@ -72,21 +73,38 @@ else:
         response = client.search(query)
         return response
 
+    _last_image_call_time = [0.0]
+
     def generate_image(img_prompt: str) -> str:
-        """Generates an image for the given prompt and returns a direct,
-        publicly-accessible image URL. Use this URL directly as the src
-        of an <img> tag in the generated HTML — do NOT reference a local
-        file path, since the browser cannot access files on the server.
-        Always also add an onerror fallback on the <img> tag pointing to
-        https://picsum.photos/seed/<any-number>/1024/576 in case generation
-        is rate-limited, e.g.:
-        <img src="THE_RETURNED_URL" loading="lazy"
-             onerror="this.onerror=null;this.src='https://picsum.photos/seed/42/1024/576';">
-        """
+        """Generates an image for the given prompt and returns a data: URI
+        (base64-encoded image) that can be used directly as the src of an
+        <img> tag in the generated HTML. Do NOT reference a local file path.
+        The image is fetched server-side, so just use the returned string
+        as-is in the src attribute — no extra fallback handling needed."""
+        # Pollinations' anonymous tier allows ~1 image request per 15s.
+        # Space out calls so images actually generate instead of erroring.
+        elapsed = time.time() - _last_image_call_time[0]
+        if elapsed < 15:
+            time.sleep(15 - elapsed)
+
         encoded_prompt = quote(img_prompt)
         seed = abs(hash(img_prompt)) % 100000
-        url = f"https://gen.pollinations.ai/image/{encoded_prompt}?width=1024&height=576&nologo=true&seed={seed}"
-        return url
+        url = (
+            f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+            f"?width=1024&height=576&nologo=true&seed={seed}&referrer=ppt_builder_app"
+        )
+        try:
+            resp = r.get(url, timeout=60)
+            _last_image_call_time[0] = time.time()
+            content_type = resp.headers.get("content-type", "")
+            if resp.status_code == 200 and content_type.startswith("image"):
+                b64 = base64.b64encode(resp.content).decode("utf-8")
+                return f"data:{content_type};base64,{b64}"
+        except Exception:
+            _last_image_call_time[0] = time.time()
+
+        # Only reached if generation genuinely failed (network/timeout/etc.)
+        return f"https://picsum.photos/seed/{seed}/1024/576"
 
     leader_agent = create_agent(model=model, tools=[search_latest_info, generate_image])
     if fallback_model is not None:
@@ -140,11 +158,11 @@ else:
           headings (e.g. Poppins/Montserrat) and a different one for body
           text, and use consistent spacing, border-radius, and box-shadow.
         - For every image, call the generate_image tool and use the exact
-          returned URL as the src of an <img> tag. Style images with fixed
-          width, border-radius, and object-fit: cover, and ALWAYS include
-          loading="lazy" plus an onerror fallback to a picsum.photos URL as
-          instructed by the tool, so a slide never shows a broken image icon.
-          Do NOT reference a local file path or filename for images.
+          returned string as the src of an <img> tag (it will be a data URI —
+          use it as-is). Style images with fixed width, border-radius, and
+          object-fit: cover. Do NOT reference a local file path or filename
+          for images, and do not add onerror handlers — the tool already
+          guarantees a usable image.
 
         Output ONLY the final HTML (including the <style> block), no markdown,
         no explanation before or after it.
