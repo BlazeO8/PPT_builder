@@ -31,7 +31,6 @@ if not all(ALL_API):
     st.markdown(f"Get Tavily API key-{url}")
 
 elif all(ALL_API):
-    st.success("API KEYS LOADED")
 
     options = [
         "gemini-3.5-flash-lite",
@@ -49,3 +48,30 @@ elif all(ALL_API):
 
 else:
     st.sidebar.info("Try Valid API-keys")
+
+# Search latest info using Tavily
+
+def search_latest_info(query):
+    """
+    This function helps to give
+    latest search using Tavily
+    based on given user query related research or
+    contents
+    """
+
+    client = TavilyClient(api_key=TAVILY_API_KEY)
+    response = client.search(query)
+    return response
+
+def generate_image(img_prompt, slide_no=1):
+    """This function helps user to generate
+    image using free api, with given
+    img_prompt, with slide no"""
+
+    url =  f"https://image.pollinations.ai/{img_prompt}"
+
+    import requests as r
+    content = r.get(url).content
+    with open(f"ai_image_{slide_no}.jpeg", "wb") as f:
+        f.write(content)
+    return url
